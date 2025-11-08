@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: jobq
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "prometheus,health,info"
+  endpoint:
+    health:
+      show-details: always
+server:
+  port: 8080

@@ -191,3 +191,6 @@ gradle-app.setting
 ### Gradle Patch ###
 # Java heap dump
 *.hprof
+app/src/main/resources/application-local.yml
+.idea/
+*.iml
