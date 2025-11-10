@@ -45,6 +45,10 @@ public class Job {
     @Column(name="updated_at", nullable=false)
     private Instant updatedAt;
 
+    @Column(name="queued_at")
+    private Instant queuedAt;
+
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
