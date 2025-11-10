@@ -2,12 +2,14 @@ package com.yerin.jobq.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yerin.jobq.dto.JobResponse;
 import com.yerin.jobq.repository.JobRepository;
 import com.yerin.jobq.service.EnqueueJobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -34,16 +36,12 @@ public class JobController {
     @GetMapping("/{id}")
     public ResponseEntity<?> get(@PathVariable Long id) {
         return jobRepository.findById(id)
-                .<ResponseEntity<?>>map(j -> ResponseEntity.ok(Map.of(
-                        "id", j.getId(),
-                        "type", j.getType(),
-                        "status", j.getStatus(),
-                        "retryCount", j.getRetryCount(),
-                        "nextAttemptAt", j.getNextAttemptAt(),
-                        "leaseUntil", j.getLeaseUntil(),
-                        "createdAt", j.getCreatedAt(),
-                        "updatedAt", j.getUpdatedAt()
-                )))
+                .<ResponseEntity<?>>map(j -> ResponseEntity.ok(
+                        new JobResponse(
+                                j.getId(), j.getType(), j.getStatus(), j.getRetryCount(),
+                                j.getNextAttemptAt(), j.getLeaseUntil(), j.getCreatedAt(), j.getUpdatedAt()
+                        )
+                ))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
