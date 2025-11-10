@@ -9,7 +9,7 @@ import java.util.UUID;
 
 @Slf4j
 @Component
-@Profile("local") // local 프로필에서만 활성화
+@Profile("local-inmem") //local 프로필에 Redis 어대터만 올리기위해서 변경
 public class InMemoryQueueAdapter implements JobQueuePort {
     @Override
     public String enqueue(String type, String payloadJson, String idempotencyKey) {
