@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+
 @Service
 @RequiredArgsConstructor
 public class EnqueueJobService {
@@ -27,6 +29,9 @@ public class EnqueueJobService {
                 .retryCount(0)
                 .build();
         job = jobRepository.save(job);
+
+        job.setQueuedAt(Instant.now());
+        jobRepository.save(job);
 
         String jobId = job.getId().toString();
         jobQueuePort.enqueueWithJobId(type, payloadJson, idempotencyKey, jobId);
