@@ -81,13 +81,20 @@ public class WorkerRunner {
         for (MapRecord<String, Object, Object> rec : records) {
             String jobIdStr = (String) rec.getValue().get("jobId");
             String payload  = (String) rec.getValue().get("payload");
+
             try {
                 Long jobId = Long.valueOf(jobIdStr);
-
-                // RUNNING+lease 설정
                 Job job = jobRepository.findById(jobId).orElse(null);
                 if (job == null) { ack(key, rec); continue; }
 
+                // 아직 시간이 안 됐으면 처리하지 않고 스킵(ACK)
+                if (job.getNextAttemptAt() != null && job.getNextAttemptAt().isAfter(Instant.now())) {
+                    ack(key, rec);
+                    log.info("[Worker] skip(not-due) key={}, id={}, nextAttemptAt={}", key, rec.getId(), job.getNextAttemptAt());
+                    continue;
+                }
+
+                // RUNNING + lease 설정
                 job.setStatus(JobStatus.RUNNING);
                 job.setLeaseUntil(Instant.now().plusSeconds(leaseSeconds));
                 jobRepository.save(job);
@@ -122,25 +129,18 @@ public class WorkerRunner {
                             ack(key, rec); // DLQ면 소모
                             log.warn("[Worker] DLQ id={}, err={}", rec.getId(), ex.toString());
                         } else {
-                            // backoff 산출
+                            // backoff 산출 후 예약만: 즉시 재적재(XADD) 하지 않음
                             Duration wait = Backoff.expJitter(job.getRetryCount(), baseBackoffMillis, backoffCapMillis, jitterRatio);
                             job.setRetryCount(nextRetry);
                             job.setStatus(JobStatus.QUEUED);
                             job.setLeaseUntil(null);
                             job.setNextAttemptAt(Instant.now().plus(wait));
+                            // queuedAt은 스케줄러가 재적재(XADD)할 때 갱신
                             jobRepository.save(job);
                             appendLog(jobId, "RETRY", ex.toString());
 
                             ack(key, rec);
-                            redis.opsForStream().add(StreamRecords.newRecord()
-                                    .in(streamKey(job.getType()))
-                                    .ofMap(Map.of(
-                                            "type", job.getType(),
-                                            "payload", job.getPayloadJson(),
-                                            "jobId", job.getId().toString()
-                                    ))
-                            );
-                            log.info("[Worker] re-enqueue jobId={} after backoff={}ms", job.getId(), wait.toMillis());
+                            log.info("[Worker] reserved retry jobId={} after backoff={}ms (re-enqueue will be done by scheduler)", job.getId(), wait.toMillis());
                         }
                     } else {
                         ack(key, rec);
