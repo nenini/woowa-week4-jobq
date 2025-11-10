@@ -30,6 +30,22 @@ public class RedisStreamsQueueAdapter implements JobQueuePort {
     private String groupName;
 
     @Override
+    public void enqueueWithJobId(String type, String payloadJson, String idempotencyKey, String jobId) {
+        String streamKey = streamPrefix + ":" + type;
+        ensureGroup(streamKey, groupName);
+
+        Map<String, String> fields = new HashMap<>();
+        fields.put("type", type);
+        fields.put("payload", payloadJson);
+        if (idempotencyKey != null) fields.put("idempotencyKey", idempotencyKey);
+        fields.put("jobId", jobId);
+        fields.put("enqueuedAt", Instant.now().toString());
+
+        RecordId rid = redis.opsForStream().add(StreamRecords.mapBacked(fields).withStreamKey(streamKey));
+        log.info("[RedisStream] XADD key={}, id={}, jobId={}, type={}", streamKey, rid, jobId, type);
+    }
+
+    @Override
     public String enqueue(String type, String payloadJson, String idempotencyKey) {
         String streamKey = streamPrefix + ":" + type;
 
