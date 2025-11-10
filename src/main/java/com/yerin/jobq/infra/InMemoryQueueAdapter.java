@@ -19,4 +19,9 @@ public class InMemoryQueueAdapter implements JobQueuePort {
         // Day2에 Redis Streams 어댑터로 교체할 예정
         return jobId;
     }
+
+    @Override
+    public void enqueueWithJobId(String type, String payloadJson, String idempotencyKey, String jobId) {
+
+    }
 }
