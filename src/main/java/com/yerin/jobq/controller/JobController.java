@@ -2,6 +2,7 @@ package com.yerin.jobq.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yerin.jobq.repository.JobRepository;
 import com.yerin.jobq.service.EnqueueJobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ public class JobController {
 
     private final EnqueueJobService enqueueJobService;
     private final ObjectMapper objectMapper;
+    private final JobRepository jobRepository;
 
     @PostMapping("/{type}")
     public ResponseEntity<Map<String, Object>> enqueue(
@@ -30,8 +32,20 @@ public class JobController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> get(@PathVariable Long id) {
-        // Day2: JPA 조회로 상태 반환 예정
-        return ResponseEntity.ok(Map.of("id", id, "status", "TBD"));
+    public ResponseEntity<?> get(@PathVariable Long id) {
+        return jobRepository.findById(id)
+                .<ResponseEntity<?>>map(j -> ResponseEntity.ok(Map.of(
+                        "id", j.getId(),
+                        "type", j.getType(),
+                        "status", j.getStatus(),
+                        "retryCount", j.getRetryCount(),
+                        "nextAttemptAt", j.getNextAttemptAt(),
+                        "leaseUntil", j.getLeaseUntil(),
+                        "createdAt", j.getCreatedAt(),
+                        "updatedAt", j.getUpdatedAt()
+                )))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
+
+
 }
