@@ -10,4 +10,6 @@ import java.util.List;
 public interface JobRepository extends JpaRepository<Job, Long> {
     List<Job> findTop100ByStatusAndNextAttemptAtLessThanEqualOrderByNextAttemptAtAsc(
             JobStatus status, Instant nextAttemptAt);
+    List<Job> findTop100ByStatusAndLeaseUntilLessThanEqualOrderByLeaseUntilAsc(
+            JobStatus status, Instant leaseUntil);
 }
