@@ -24,4 +24,9 @@ public class InMemoryQueueAdapter implements JobQueuePort {
     public void enqueueWithJobId(String type, String payloadJson, String idempotencyKey, String jobId) {
 
     }
+
+    @Override
+    public void enqueueDlq(String type, String payloadJson, String jobId) {
+
+    }
 }
