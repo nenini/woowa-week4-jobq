@@ -194,4 +194,3 @@ gradle-app.setting
 app/src/main/resources/application-local.yml
 .idea/
 *.iml
-**/src/main/resources/application-local.yml
