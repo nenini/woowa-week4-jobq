@@ -4,6 +4,7 @@ import com.yerin.jobq.application.JobHandler;
 import com.yerin.jobq.application.JobHandlerRegistry;
 import com.yerin.jobq.domain.Job;
 import com.yerin.jobq.domain.JobEventLog;
+import com.yerin.jobq.domain.JobQueuePort;
 import com.yerin.jobq.domain.JobStatus;
 import com.yerin.jobq.repository.JobEventLogRepository;
 import com.yerin.jobq.repository.JobRepository;
@@ -31,6 +32,7 @@ public class WorkerRunner {
     private final JobRepository jobRepository;
     private final JobEventLogRepository logRepository;
     private final JobHandlerRegistry registry;
+    private final JobQueuePort jobQueuePort;
 
     @Value("${jobq.stream.prefix:jobq:stream}")
     private String streamPrefix;
@@ -121,26 +123,33 @@ public class WorkerRunner {
                     Job job = jobRepository.findById(jobId).orElse(null);
                     if (job != null) {
                         int nextRetry = job.getRetryCount() + 1;
+
                         if (nextRetry > maxRetries) {
                             job.setStatus(JobStatus.DLQ);
                             job.setLeaseUntil(null);
                             jobRepository.save(job);
                             appendLog(jobId, "DLQ", ex.toString());
-                            ack(key, rec); // DLQ면 소모
-                            log.warn("[Worker] DLQ id={}, err={}", rec.getId(), ex.toString());
+
+                            jobQueuePort.enqueueDlq(job.getType(), job.getPayloadJson(), job.getId().toString());
+
+                            ack(key, rec);
+                            log.warn("[Worker] DLQ jobId={}, redisId={}, err={}", job.getId(), rec.getId(), ex.toString());
                         } else {
-                            // backoff 산출 후 예약만: 즉시 재적재(XADD) 하지 않음
-                            Duration wait = Backoff.expJitter(job.getRetryCount(), baseBackoffMillis, backoffCapMillis, jitterRatio);
+                            Duration wait = Backoff.expJitter(
+                                    job.getRetryCount(),
+                                    baseBackoffMillis,
+                                    backoffCapMillis,
+                                    jitterRatio
+                            );
                             job.setRetryCount(nextRetry);
                             job.setStatus(JobStatus.QUEUED);
                             job.setLeaseUntil(null);
                             job.setNextAttemptAt(Instant.now().plus(wait));
-                            // queuedAt은 스케줄러가 재적재(XADD)할 때 갱신
                             jobRepository.save(job);
                             appendLog(jobId, "RETRY", ex.toString());
 
                             ack(key, rec);
-                            log.info("[Worker] reserved retry jobId={} after backoff={}ms (re-enqueue will be done by scheduler)", job.getId(), wait.toMillis());
+                            log.info("[Worker] reserved retry jobId={} after {} ms", job.getId(), wait.toMillis());
                         }
                     } else {
                         ack(key, rec);

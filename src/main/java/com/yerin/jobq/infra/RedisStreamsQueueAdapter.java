@@ -29,6 +29,9 @@ public class RedisStreamsQueueAdapter implements JobQueuePort {
     @Value("${jobq.stream.group:jobq:cg}")
     private String groupName;
 
+    @Value("${jobq.stream.dlqPrefix:jobq:stream:dlq}")
+    private String dlqPrefix;
+
     @Override
     public void enqueueWithJobId(String type, String payloadJson, String idempotencyKey, String jobId) {
         String streamKey = streamPrefix + ":" + type;
@@ -78,4 +81,19 @@ public class RedisStreamsQueueAdapter implements JobQueuePort {
             }
         }
     }
+
+    @Override
+    public void enqueueDlq(String type, String payloadJson, String jobId) {
+        String key = dlqPrefix + ":" + type;
+        Map<String, String> fields = new HashMap<>();
+        fields.put("type", type);
+        fields.put("payload", payloadJson);
+        fields.put("jobId", jobId);
+        fields.put("enqueuedAt", Instant.now().toString());
+
+        RecordId rid = redis.opsForStream()
+                .add(StreamRecords.mapBacked(fields).withStreamKey(key));
+        log.info("[RedisStream][DLQ] XADD key={}, id={}, jobId={}, type={}", key, rid, jobId, type);
+    }
+
 }

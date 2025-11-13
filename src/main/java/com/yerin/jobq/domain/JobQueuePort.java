@@ -5,6 +5,8 @@ public interface JobQueuePort {
 
     // poll/ack/nack 등 추가 예정
     void enqueueWithJobId(String type, String payloadJson, String idempotencyKey, String jobId);
+    void   enqueueDlq(String type, String payloadJson, String jobId);
+
 
 }
 
