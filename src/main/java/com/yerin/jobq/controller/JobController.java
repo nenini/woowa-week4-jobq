@@ -36,14 +36,8 @@ public class JobController {
     @GetMapping("/{id}")
     public ResponseEntity<?> get(@PathVariable Long id) {
         return jobRepository.findById(id)
-                .<ResponseEntity<?>>map(j -> ResponseEntity.ok(
-                        new JobResponse(
-                                j.getId(), j.getType(), j.getStatus(), j.getRetryCount(),
-                                j.getNextAttemptAt(), j.getLeaseUntil(), j.getCreatedAt(), j.getUpdatedAt()
-                        )
-                ))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .map(JobResponse::from)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
-
-
 }
