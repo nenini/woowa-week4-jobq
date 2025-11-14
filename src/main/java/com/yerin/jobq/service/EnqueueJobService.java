@@ -1,9 +1,6 @@
 package com.yerin.jobq.service;
 
-import com.yerin.jobq.domain.Job;
-import com.yerin.jobq.domain.JobIdempotency;
-import com.yerin.jobq.domain.JobQueuePort;
-import com.yerin.jobq.domain.JobStatus;
+import com.yerin.jobq.domain.*;
 import com.yerin.jobq.repository.JobIdempotencyRepository;
 import com.yerin.jobq.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,11 +16,8 @@ public class EnqueueJobService {
     private final JobQueuePort jobQueuePort;
     private final JobRepository jobRepository;
     private final JobIdempotencyRepository idemRepo;
+    private final JobqMetrics metrics;
 
-
-//    public String enqueue(String type, String payloadJson, String idempotencyKey) {
-//        return jobQueuePort.enqueue(type, payloadJson, idempotencyKey);
-//    }
 
     @Transactional
     public String enqueue(String type, String payloadJson, String idempotencyKey) {
@@ -60,6 +54,8 @@ public class EnqueueJobService {
         jobRepository.save(job);
 
         jobQueuePort.enqueueWithJobId(type, payloadJson, idempotencyKey, job.getId().toString());
+
+        metrics.incCreated();
         return job.getId().toString();
     }
 }
