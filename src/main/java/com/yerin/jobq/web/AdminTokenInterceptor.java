@@ -14,6 +14,10 @@ public class AdminTokenInterceptor implements HandlerInterceptor {
     @Value("${jobq.admin.token:}")
     private String adminToken;
 
+    public AdminTokenInterceptor(String adminToken) {
+        this.adminToken = adminToken;
+    }
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
