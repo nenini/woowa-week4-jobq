@@ -1,0 +1,43 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  task:
+    scheduling:
+      enabled: false
+
+jobq:
+  stream:
+    prefix: jobq:stream
+    group: jobq:cg
+    dlqPrefix: jobq:stream:dlq
+  worker:
+    batchSize: 5
+    blockMillis: 500
+    leaseSeconds: 5
+  retry:
+    maxRetries: 3
+    baseBackoffMillis: 200
+    backoffCapMillis: 3000
+    jitterRatio: 0.0
+  handler:
+    emailWelcome:
+      failAlways: false
+  admin:
+    token: "test-admin-token"
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: jobq-test
