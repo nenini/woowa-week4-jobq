@@ -70,7 +70,7 @@ public class WorkerRunner {
 //        log.info("[Worker] poll tick");
         String type = "email_welcome";
         String key = streamKey(type);
-        ensureGroup(key, groupName);
+//        ensureGroup(key, groupName);
 
         List<MapRecord<String, Object, Object>> records = redis.opsForStream().read(
                 Consumer.from(groupName, consumerName),
