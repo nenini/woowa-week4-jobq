@@ -19,7 +19,6 @@ public class TestHandlersConfig {
                     var node = om.readTree(payloadJson);
                     int userId = node.path("userId").asInt();
                     if (userId == 777) throw new RuntimeException("simulated failure");
-                    // 성공은 아무 일 없이 통과
                 } catch (RuntimeException e) {
                     throw e;
                 } catch (Exception e) {

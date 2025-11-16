@@ -187,16 +187,13 @@ public class WorkerRunner {
 
     private void ensureGroup(String key, String group) {
         try {
-            // 스트림이 없으면 하나 만들기 (더미 레코드)
             redis.opsForStream().add(
                     StreamRecords.mapBacked(Map.of("bootstrap", "1")).withStreamKey(key)
             );
-            // 0-0부터 읽는 소비자 그룹 생성
             redis.opsForStream().createGroup(key, ReadOffset.from("0-0"), group);
             log.info("[RedisStream] createGroup key={}, group={} (dummy xadd)", key, group);
         } catch (Exception e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
-            // 이미 있으면 조용히 통과, 그 외만 경고
             if (!(msg.contains("BUSYGROUP") || msg.contains("already exists"))) {
                 log.warn("[RedisStream] createGroup ignored key={}, group={}, cause={}", key, group, msg);
             }
