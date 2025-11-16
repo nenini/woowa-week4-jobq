@@ -27,5 +27,8 @@ public class JobIdempotency {
 
     @Column(name="created_at", nullable=false)
     private Instant createdAt = Instant.now();
+
+    public JobIdempotency(String s, long l, Instant now) {
+    }
 }
 

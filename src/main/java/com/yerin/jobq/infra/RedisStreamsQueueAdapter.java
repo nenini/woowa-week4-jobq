@@ -1,6 +1,7 @@
 package com.yerin.jobq.infra;
 
 import com.yerin.jobq.domain.JobQueuePort;
+import io.lettuce.core.XGroupCreateArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,9 +9,12 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,7 +23,7 @@ import java.util.UUID;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@Profile("local")
+//@Profile("local")
 public class RedisStreamsQueueAdapter implements JobQueuePort {
     private final StringRedisTemplate redis;
 
@@ -71,12 +75,14 @@ public class RedisStreamsQueueAdapter implements JobQueuePort {
 
     private void ensureGroup(String streamKey, String group) {
         try {
-            redis.opsForStream().createGroup(streamKey, ReadOffset.latest(), group);
-            log.info("[RedisStream] createGroup key={}, group={}", streamKey, group);
+            redis.opsForStream().add(
+                    StreamRecords.mapBacked(Map.of("bootstrap", "1")).withStreamKey(streamKey)
+            );
+            redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), group);
+            log.info("[RedisStream] createGroup key={}, group={} (dummy xadd)", streamKey, group);
         } catch (Exception e) {
-            String msg = e.getMessage() != null ? e.getMessage() : "";
-            if (msg.contains("BUSYGROUP") || msg.contains("already exists")) {
-            } else {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            if (!(msg.contains("BUSYGROUP") || msg.contains("already exists"))) {
                 log.warn("[RedisStream] createGroup ignored key={}, group={}, cause={}", streamKey, group, msg);
             }
         }

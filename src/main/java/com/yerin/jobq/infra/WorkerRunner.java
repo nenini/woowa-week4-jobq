@@ -2,10 +2,7 @@ package com.yerin.jobq.infra;
 
 import com.yerin.jobq.application.JobHandler;
 import com.yerin.jobq.application.JobHandlerRegistry;
-import com.yerin.jobq.domain.Job;
-import com.yerin.jobq.domain.JobEventLog;
-import com.yerin.jobq.domain.JobQueuePort;
-import com.yerin.jobq.domain.JobStatus;
+import com.yerin.jobq.domain.*;
 import com.yerin.jobq.repository.JobEventLogRepository;
 import com.yerin.jobq.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +22,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@Profile("local")
+//@Profile("local")
 public class WorkerRunner {
 
     private final StringRedisTemplate redis;
@@ -33,6 +30,7 @@ public class WorkerRunner {
     private final JobEventLogRepository logRepository;
     private final JobHandlerRegistry registry;
     private final JobQueuePort jobQueuePort;
+    private final JobqMetrics metrics;
 
     @Value("${jobq.stream.prefix:jobq:stream}")
     private String streamPrefix;
@@ -58,7 +56,7 @@ public class WorkerRunner {
     @Value("${jobq.retry.jitterRatio:0.2}")
     private double jitterRatio;
 
-    @Value("${jobq.leaseSeconds:30}")
+    @Value("${jobq.worker.leaseSeconds:30}")
     private long leaseSeconds;
 
     private final String consumerName = WorkerId.consumerName();
@@ -69,7 +67,8 @@ public class WorkerRunner {
 
     @Scheduled(fixedDelay = 1000)
     public void poll() {
-        String type = "email_welcome"; // Day3: 데모 1종
+//        log.info("[Worker] poll tick");
+        String type = "email_welcome";
         String key = streamKey(type);
         ensureGroup(key, groupName);
 
@@ -81,13 +80,22 @@ public class WorkerRunner {
         if (records == null || records.isEmpty()) return;
 
         for (MapRecord<String, Object, Object> rec : records) {
+            if (rec.getValue().containsKey("bootstrap") || rec.getValue().get("jobId") == null) {
+                ack(key, rec);
+                log.debug("[Worker] skip bootstrap/invalid rec id={}", rec.getId());
+                continue;
+            }
+
             String jobIdStr = (String) rec.getValue().get("jobId");
-            String payload  = (String) rec.getValue().get("payload");
+            String payload = (String) rec.getValue().get("payload");
 
             try {
                 Long jobId = Long.valueOf(jobIdStr);
                 Job job = jobRepository.findById(jobId).orElse(null);
-                if (job == null) { ack(key, rec); continue; }
+                if (job == null) {
+                    ack(key, rec);
+                    continue;
+                }
 
                 // 아직 시간이 안 됐으면 처리하지 않고 스킵(ACK)
                 if (job.getNextAttemptAt() != null && job.getNextAttemptAt().isAfter(Instant.now())) {
@@ -103,21 +111,30 @@ public class WorkerRunner {
                 appendLog(jobId, "RUNNING", "lease set");
 
                 // 핸들러 실행
-                JobHandler handler = registry.get(job.getType());
-                if (handler == null) throw new IllegalStateException("No handler for type=" + job.getType());
-                handler.handle(jobIdStr, payload);
+                long start = System.nanoTime();
+                try {
+                    JobHandler handler = registry.get(job.getType());
+                    if (handler == null) throw new IllegalStateException("No handler for type=" + job.getType());
+                    handler.handle(jobIdStr, payload);
+                } finally {
+                    long durNanos = System.nanoTime() - start;
+                    metrics.handlerTimer(job.getType())
+                            .record(Duration.ofNanos(durNanos));
+                }
 
                 // 성공 → SUCCEEDED
                 job.setStatus(JobStatus.SUCCEEDED);
                 job.setLeaseUntil(null);
                 jobRepository.save(job);
                 appendLog(jobId, "SUCCEEDED", null);
+                metrics.incSucceeded();
 
                 ack(key, rec);
                 log.info("[Worker] ACK key={}, id={}", key, rec.getId());
 
             } catch (Exception ex) {
                 // 실패 → 재시도 or DLQ
+                metrics.incFailed();
                 try {
                     Long jobId = Long.valueOf(jobIdStr);
                     Job job = jobRepository.findById(jobId).orElse(null);
@@ -129,6 +146,7 @@ public class WorkerRunner {
                             job.setLeaseUntil(null);
                             jobRepository.save(job);
                             appendLog(jobId, "DLQ", ex.toString());
+                            metrics.incDlq();
 
                             jobQueuePort.enqueueDlq(job.getType(), job.getPayloadJson(), job.getId().toString());
 
@@ -147,6 +165,7 @@ public class WorkerRunner {
                             job.setNextAttemptAt(Instant.now().plus(wait));
                             jobRepository.save(job);
                             appendLog(jobId, "RETRY", ex.toString());
+                            metrics.incRetried();
 
                             ack(key, rec);
                             log.info("[Worker] reserved retry jobId={} after {} ms", job.getId(), wait.toMillis());
@@ -166,10 +185,24 @@ public class WorkerRunner {
         redis.opsForStream().acknowledge(key, groupName, rec.getId());
     }
 
-    private void ensureGroup(String k, String g) {
-        try { redis.opsForStream().createGroup(k, ReadOffset.latest(), g); }
-        catch (Exception e) { /* BUSYGROUP 무시 */ }
+    private void ensureGroup(String key, String group) {
+        try {
+            // 스트림이 없으면 하나 만들기 (더미 레코드)
+            redis.opsForStream().add(
+                    StreamRecords.mapBacked(Map.of("bootstrap", "1")).withStreamKey(key)
+            );
+            // 0-0부터 읽는 소비자 그룹 생성
+            redis.opsForStream().createGroup(key, ReadOffset.from("0-0"), group);
+            log.info("[RedisStream] createGroup key={}, group={} (dummy xadd)", key, group);
+        } catch (Exception e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            // 이미 있으면 조용히 통과, 그 외만 경고
+            if (!(msg.contains("BUSYGROUP") || msg.contains("already exists"))) {
+                log.warn("[RedisStream] createGroup ignored key={}, group={}, cause={}", key, group, msg);
+            }
+        }
     }
+
 
     private void appendLog(Long jobId, String event, String message) {
         logRepository.save(JobEventLog.builder()
