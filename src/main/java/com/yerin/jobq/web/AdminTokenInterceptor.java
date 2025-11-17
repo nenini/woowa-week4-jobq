@@ -21,8 +21,7 @@ public class AdminTokenInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
-        // 필요한 엔드포인트만 WebMvcConfig에서 pathPattern으로 묶어서 들어오게 할 예정
-        String token = request.getHeader("X-ADMIN-TOKEN");
+        String token = request.getHeader("X-Admin-Token");
         if (adminToken != null && !adminToken.isBlank() && adminToken.equals(token)) {
             return true;
         }

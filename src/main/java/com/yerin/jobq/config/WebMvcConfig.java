@@ -17,7 +17,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(adminTokenInterceptor)
                 .addPathPatterns("/admin/**")
                 .excludePathPatterns(
-                        "/admin/metrics/**",
+//                        "/admin/metrics/**",
                         "/actuator/**",
                         "/swagger-ui/**",
                         "/v3/api-docs/**"
