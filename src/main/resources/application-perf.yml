@@ -1,0 +1,78 @@
+# application-perf.yml
+
+spring:
+  task:
+    scheduling:
+      enabled: true           # 워커 스케줄러 켜기
+
+  datasource:
+    url: jdbc:postgresql://localhost:5434/jobq
+    username: jobq
+    password: jobq
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20   # perf용 커넥션 풀
+
+  jpa:
+    hibernate:
+      ddl-auto: none          # 마이그레이션만 사용
+    properties:
+      hibernate:
+        jdbc:
+          lob:
+            non_contextual_creation: true
+      hibernate.format_sql: false
+      hibernate.jdbc.time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: localhost
+      port: 6380
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 64
+          max-idle: 32
+          min-idle: 8
+
+server:
+  tomcat:
+    threads:
+      max: 200
+
+jobq:
+  stream:
+    prefix: jobq:stream
+    group: jobq:cg
+    dlqPrefix: jobq:stream:dlq
+  worker:
+    concurrency: 4
+    batchSize: 64
+    blockMillis: 500
+    leaseSeconds: 20
+  retry:
+    maxRetries: 5
+    baseBackoffMillis: 500
+    backoffCapMillis: 20000
+    jitterRatio: 0.1
+  handler:
+    emailWelcome:
+      failAlways: false
+  admin:
+    token: test-admin-token
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus,metrics"
+  metrics:
+    tags:
+      application: jobq-perf
+    distribution:
+      percentiles-histogram:
+        "[jobq.handler.seconds]": true
