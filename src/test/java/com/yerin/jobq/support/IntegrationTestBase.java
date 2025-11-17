@@ -21,12 +21,12 @@ import org.testcontainers.utility.DockerImageName;
 public abstract class IntegrationTestBase {
 
     @Container
-    @ServiceConnection // ★ DataSource 자동 연결
+    @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Container
-    @ServiceConnection(name = "redis") // ★ spring.data.redis.* 자동 연결
+    @ServiceConnection(name = "redis")
     static final GenericContainer<?> REDIS =
             new GenericContainer<>(DockerImageName.parse("redis:7.2-alpine"))
                     .withExposedPorts(6379);

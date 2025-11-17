@@ -25,7 +25,7 @@ public class AdminJobService {
             throw new IllegalStateException("job is not in DLQ");
         }
 
-        // 재시작 전략: 카운트 초기화 + 즉시 재처리 예약 + 큐 재적재
+        // 재시작 : 카운트 초기화 + 즉시 재처리 예약 + 큐 재적재
         job.setStatus(JobStatus.QUEUED);
         job.setRetryCount(0);
         job.setLeaseUntil(null);

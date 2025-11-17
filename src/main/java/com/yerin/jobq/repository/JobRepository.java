@@ -12,4 +12,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
             JobStatus status, Instant nextAttemptAt);
     List<Job> findTop100ByStatusAndLeaseUntilLessThanEqualOrderByLeaseUntilAsc(
             JobStatus status, Instant leaseUntil);
+    long countByStatus(JobStatus status);
+
 }

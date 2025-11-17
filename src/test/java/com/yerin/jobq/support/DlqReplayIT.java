@@ -1,6 +1,5 @@
 package com.yerin.jobq.support;
 
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,15 +50,12 @@ class DlqReplayIT extends IntegrationTestBase {
                     assertThat(r.getBody().get("status")).isEqualTo("DLQ");
                 });
 
-// 리플레이 호출 (DLQ면 200 기대)
         HttpHeaders h = new HttpHeaders();
         h.set("X-Admin-Token", "test-admin-token");
         var replay = rest.exchange("/admin/jobs/{id}/replay", HttpMethod.POST, new HttpEntity<>(h), Map.class, jobId);
         assertThat(replay.getStatusCode().is2xxSuccessful()).isTrue();
-// DLQ 상태에서만 OK가 떨어지도록 했으면:
         assertThat(replay.getStatusCode().is2xxSuccessful()).isTrue();
 
-// (선택) 리플레이 후 상태가 다시 QUEUED로 바뀌는지 짧게 확인
         Awaitility.await()
                 .atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> {

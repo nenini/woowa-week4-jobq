@@ -16,7 +16,6 @@ public class InMemoryQueueAdapter implements JobQueuePort {
         String jobId = UUID.randomUUID().toString();
         log.info("[InMemoryQueue] enqueue type={}, idKey={}, jobId={}, payload={}",
                 type, idempotencyKey, jobId, payloadJson);
-        // Day2에 Redis Streams 어댑터로 교체할 예정
         return jobId;
     }
 
