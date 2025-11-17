@@ -33,7 +33,7 @@ class AdminMetricsE2ESmokeIT extends IntegrationTestBase {
 
     @Test
     @DisplayName("큐/잡 메트릭 200 응답 & 기본 구조 확인")
-    void metricsEndpointsRespondAndLookSane() {
+    void metrics_endpoints_respond_and_lookSane() {
         ResponseEntity<String> q = rest.exchange("/admin/metrics/queue", HttpMethod.GET, admin(), String.class);
         ResponseEntity<String> j = rest.exchange("/admin/metrics/jobs",  HttpMethod.GET, admin(), String.class);
 

@@ -23,7 +23,7 @@ class DashboardStaticSmokeTest extends IntegrationTestBase {
 
     @Test
     @DisplayName("dashboard.html 200 OK & 핵심 텍스트 포함")
-    void servesDashboardHtml() {
+    void serves_dashboard_html() {
         var r = rest.getForEntity("/dashboard.html", String.class);
         assertThat(r.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(r.getBody()).contains("JobQ 대시보드")

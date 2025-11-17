@@ -25,7 +25,7 @@ class AdminMetricsControllerSecurityTest extends IntegrationTestBase {
 
     @Test
     @DisplayName("헤더 없음 → 401/403으로 차단")
-    void blocksWhenHeaderMissing() {
+    void block_when_header_missing() {
         ResponseEntity<String> r1 = rest.getForEntity("/admin/metrics/queue", String.class);
         ResponseEntity<String> r2 = rest.getForEntity("/admin/metrics/jobs", String.class);
         assertThat(r1.getStatusCode().value()).isIn(401, 403);
@@ -34,7 +34,7 @@ class AdminMetricsControllerSecurityTest extends IntegrationTestBase {
 
     @Test
     @DisplayName("잘못된 토큰 → 401/403으로 차단")
-    void blocksWhenHeaderInvalid() {
+    void blocks_when_header_invalid() {
         HttpHeaders h = new HttpHeaders();
         h.set("X-Admin-Token", "wrong-token");
         ResponseEntity<String> r1 = rest.exchange("/admin/metrics/queue", HttpMethod.GET, new HttpEntity<>(h), String.class);
@@ -45,7 +45,7 @@ class AdminMetricsControllerSecurityTest extends IntegrationTestBase {
 
     @Test
     @DisplayName("정상 토큰 → 200과 JSON 본문")
-    void passesWhenHeaderValid() {
+    void passes_when_header_valid() {
         HttpHeaders h = new HttpHeaders();
         h.set("X-Admin-Token", "test-admin-token"); // application-test.yml
         ResponseEntity<String> q = rest.exchange("/admin/metrics/queue", HttpMethod.GET, new HttpEntity<>(h), String.class);
