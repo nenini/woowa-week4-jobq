@@ -5,26 +5,27 @@ import com.yerin.jobq.application.JobHandlerRegistry;
 import com.yerin.jobq.domain.*;
 import com.yerin.jobq.repository.JobEventLogRepository;
 import com.yerin.jobq.repository.JobRepository;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 //@Profile("local")
 public class WorkerRunner {
-
     private final StringRedisTemplate redis;
     private final JobRepository jobRepository;
     private final JobEventLogRepository logRepository;
@@ -44,6 +45,12 @@ public class WorkerRunner {
     @Value("${jobq.worker.blockMillis:2000}")
     private long blockMillis;
 
+    @Value("${jobq.worker.leaseSeconds:30}")
+    private long leaseSeconds;
+
+    @Value("${jobq.worker.concurrency:1}")
+    private int concurrency;
+
     @Value("${jobq.retry.maxRetries:5}")
     private int maxRetries;
 
@@ -56,24 +63,54 @@ public class WorkerRunner {
     @Value("${jobq.retry.jitterRatio:0.2}")
     private double jitterRatio;
 
-    @Value("${jobq.worker.leaseSeconds:30}")
-    private long leaseSeconds;
-
-    private final String consumerName = WorkerId.consumerName();
+    private ExecutorService workers;
+    private volatile boolean grouped = false; // 그룹 준비 1회 보장
 
     private String streamKey(String type) {
         return streamPrefix + ":" + type;
     }
 
-    @Scheduled(fixedDelay = 1000)
-    public void poll() {
-//        log.info("[Worker] poll tick");
-        String type = "email_welcome";
-        String key = streamKey(type);
-//        ensureGroup(key, groupName);
+
+    @PostConstruct
+    void startWorkers() {
+        final String type = "email_welcome";
+        ensureGroupOnce(type);
+
+        workers = Executors.newFixedThreadPool(concurrency);
+        for (int i = 0; i < concurrency; i++) {
+            final int idx = i;
+            final String consumer = WorkerId.consumerName() + "-" + idx;
+            workers.submit(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        pollOnce(type, consumer);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    } catch (Exception e) {
+                        log.warn("[Worker] poll loop error: {}", e.toString());
+                        try { Thread.sleep(100); } catch (InterruptedException ignored) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                }
+            });
+        }
+        log.info("[Worker] started {} consumers for type=email_welcome", concurrency);
+    }
+
+    @PreDestroy
+    void stopWorkers() {
+        if (workers != null) {
+            workers.shutdownNow();
+        }
+    }
+
+
+    public void pollOnce(String type, String consumer) throws InterruptedException {
+        final String key = streamKey(type);
 
         List<MapRecord<String, Object, Object>> records = redis.opsForStream().read(
-                Consumer.from(groupName, consumerName),
+                Consumer.from(groupName, consumer),
                 StreamReadOptions.empty().count(batchSize).block(Duration.ofMillis(blockMillis)),
                 StreamOffset.create(key, ReadOffset.lastConsumed())
         );
@@ -86,18 +123,18 @@ public class WorkerRunner {
                 continue;
             }
 
-            String jobIdStr = (String) rec.getValue().get("jobId");
-            String payload = (String) rec.getValue().get("payload");
+            final String jobIdStr = String.valueOf(rec.getValue().get("jobId"));
+            final String payload = (String) rec.getValue().get("payload");
 
             try {
-                Long jobId = Long.valueOf(jobIdStr);
+                final Long jobId = Long.valueOf(jobIdStr);
                 Job job = jobRepository.findById(jobId).orElse(null);
                 if (job == null) {
                     ack(key, rec);
                     continue;
                 }
 
-                // 아직 시간이 안 됐으면 처리하지 않고 스킵(ACK)
+                // 아직 시각이 안 되었으면 스킵(ACK)
                 if (job.getNextAttemptAt() != null && job.getNextAttemptAt().isAfter(Instant.now())) {
                     ack(key, rec);
                     log.info("[Worker] skip(not-due) key={}, id={}, nextAttemptAt={}", key, rec.getId(), job.getNextAttemptAt());
@@ -110,7 +147,7 @@ public class WorkerRunner {
                 jobRepository.save(job);
                 appendLog(jobId, "RUNNING", "lease set");
 
-                // 핸들러 실행
+                // 핸들러 실행(타이머 기록)
                 long start = System.nanoTime();
                 try {
                     JobHandler handler = registry.get(job.getType());
@@ -118,8 +155,7 @@ public class WorkerRunner {
                     handler.handle(jobIdStr, payload);
                 } finally {
                     long durNanos = System.nanoTime() - start;
-                    metrics.handlerTimer(job.getType())
-                            .record(Duration.ofNanos(durNanos));
+                    metrics.handlerTimer(job.getType()).record(Duration.ofNanos(durNanos));
                 }
 
                 // 성공 → SUCCEEDED
@@ -136,7 +172,7 @@ public class WorkerRunner {
                 // 실패 → 재시도 or DLQ
                 metrics.incFailed();
                 try {
-                    Long jobId = Long.valueOf(jobIdStr);
+                    final Long jobId = Long.valueOf(jobIdStr);
                     Job job = jobRepository.findById(jobId).orElse(null);
                     if (job != null) {
                         int nextRetry = job.getRetryCount() + 1;
@@ -185,25 +221,35 @@ public class WorkerRunner {
         redis.opsForStream().acknowledge(key, groupName, rec.getId());
     }
 
-    private void ensureGroup(String key, String group) {
-        try {
-            redis.opsForStream().add(
-                    StreamRecords.mapBacked(Map.of("bootstrap", "1")).withStreamKey(key)
-            );
-            redis.opsForStream().createGroup(key, ReadOffset.from("0-0"), group);
-            log.info("[RedisStream] createGroup key={}, group={} (dummy xadd)", key, group);
-        } catch (Exception e) {
-            String msg = e.getMessage() == null ? "" : e.getMessage();
-            if (!(msg.contains("BUSYGROUP") || msg.contains("already exists"))) {
-                log.warn("[RedisStream] createGroup ignored key={}, group={}, cause={}", key, group, msg);
+    private void ensureGroupOnce(String type) {
+        if (grouped) return;
+        synchronized (this) {
+            if (grouped) return;
+
+            String key = streamKey(type);
+            try {
+                RecordId rid = redis.opsForStream().add(
+                        StreamRecords.mapBacked(Map.of("bootstrap", "1")).withStreamKey(key)
+                );
+                redis.opsForStream().createGroup(key, ReadOffset.latest(), groupName);
+                redis.opsForStream().delete(key, rid);
+
+                log.info("[RedisStream] group prepared key={}, group={}, rec={}", key, groupName, rid);
+            } catch (Exception e) {
+                String msg = e.getMessage() == null ? "" : e.getMessage();
+                if (!(msg.contains("BUSYGROUP") || msg.contains("already exists"))) {
+                    log.warn("[RedisStream] createGroup ignored key={}, group={}, cause={}", key, groupName, msg);
+                }
             }
+            grouped = true;
         }
     }
 
-
     private void appendLog(Long jobId, String event, String message) {
-        logRepository.save(JobEventLog.builder()
-                .jobId(jobId).eventType(event).message(message).build());
+        logRepository.save(
+                com.yerin.jobq.domain.JobEventLog.builder()
+                        .jobId(jobId).eventType(event).message(message).build()
+        );
     }
 
 }
