@@ -1,3 +1,64 @@
+<!--<!doctype html>-->
+<!--<html>-->
+<!--<head>-->
+<!--    <meta charset="utf-8"/>-->
+<!--    <title>JobQ 대시보드 (Day6)</title>-->
+<!--    <style>-->
+<!--        body { font-family: -apple-system, system-ui, sans-serif; margin: 24px; }-->
+<!--        table { border-collapse: collapse; width: 520px; }-->
+<!--        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }-->
+<!--        th { background: #f6f6f6; }-->
+<!--        .ts { margin: 8px 0 16px; color: #666; font-size: 13px; }-->
+<!--    </style>-->
+<!--</head>-->
+<!--<body>-->
+<!--<h2>JobQ 대시보드</h2>-->
+<!--<div class="ts" id="ts">-</div>-->
+
+<!--<h3>Redis Streams</h3>-->
+<!--<table id="q">-->
+<!--    <thead><tr><th>type</th><th>XLEN</th></tr></thead>-->
+<!--    <tbody></tbody>-->
+<!--</table>-->
+
+<!--<h3 style="margin-top:24px;">Job 상태</h3>-->
+<!--<table id="jobs">-->
+<!--    <thead><tr><th>Status</th><th>Count</th></tr></thead>-->
+<!--    <tbody></tbody>-->
+<!--</table>-->
+
+<!--<script>-->
+<!--    async function tick() {-->
+<!--        try {-->
+<!--            const q = await fetch('/admin/metrics/queue').then(r=>r.json());-->
+<!--            const j = await fetch('/admin/metrics/jobs').then(r=>r.json());-->
+
+<!--            document.getElementById('ts').innerText = `Updated: ${q.ts}`;-->
+
+<!--            const qBody = document.querySelector('#q tbody');-->
+<!--            qBody.innerHTML = '';-->
+<!--            Object.entries(q.streams).forEach(([type, v]) => {-->
+<!--                const tr = document.createElement('tr');-->
+<!--                tr.innerHTML = `<td>${type}</td><td>${v.xlen}</td>`;-->
+<!--                qBody.appendChild(tr);-->
+<!--            });-->
+
+<!--            const jBody = document.querySelector('#jobs tbody');-->
+<!--            jBody.innerHTML = '';-->
+<!--            Object.entries(j).forEach(([k, v]) => {-->
+<!--                const tr = document.createElement('tr');-->
+<!--                tr.innerHTML = `<td>${k}</td><td>${v}</td>`;-->
+<!--                jBody.appendChild(tr);-->
+<!--            });-->
+<!--        } catch (e) {-->
+<!--            console.error(e);-->
+<!--        }-->
+<!--    }-->
+<!--    setInterval(tick, 2000);-->
+<!--    tick();-->
+<!--</script>-->
+<!--</body>-->
+<!--</html>-->
 <!doctype html>
 <html>
 <head>
@@ -9,11 +70,13 @@
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background: #f6f6f6; }
         .ts { margin: 8px 0 16px; color: #666; font-size: 13px; }
+        .warn { color:#b00020; font-size:13px; margin:8px 0 0; }
     </style>
 </head>
 <body>
 <h2>JobQ 대시보드</h2>
 <div class="ts" id="ts">-</div>
+<div id="warn" class="warn"></div>
 
 <h3>Redis Streams</h3>
 <table id="q">
@@ -28,16 +91,40 @@
 </table>
 
 <script>
+    // ✅ 대시보드가 관리자 API를 호출할 때 넣을 토큰
+    const ADMIN_TOKEN = 'test-admin-token';
+
+    // (원하면 쿼리스트링으로 덮어쓰기 가능: /dashboard.html?token=xxx)
+    const urlToken = new URLSearchParams(location.search).get('token');
+    const EFFECTIVE_TOKEN = urlToken || ADMIN_TOKEN;
+
+    function withToken(path) {
+        return fetch(path, { headers: { 'X-Admin-Token': EFFECTIVE_TOKEN } });
+    }
+
     async function tick() {
         try {
-            const q = await fetch('/admin/metrics/queue').then(r=>r.json());
-            const j = await fetch('/admin/metrics/jobs').then(r=>r.json());
+            const [qRes, jRes] = await Promise.all([
+                withToken('/admin/metrics/queue'),
+                withToken('/admin/metrics/jobs')
+            ]);
 
-            document.getElementById('ts').innerText = `Updated: ${q.ts}`;
+            if (!qRes.ok || !jRes.ok) {
+                const msg = `인증 실패 또는 오류 (queue:${qRes.status}, jobs:${jRes.status}). 토큰을 확인하세요.`;
+                document.getElementById('warn').innerText = msg;
+                return;
+            } else {
+                document.getElementById('warn').innerText = '';
+            }
+
+            const q = await qRes.json();
+            const j = await jRes.json();
+
+            document.getElementById('ts').innerText = `Updated: ${q.ts ?? '-'}`;
 
             const qBody = document.querySelector('#q tbody');
             qBody.innerHTML = '';
-            Object.entries(q.streams).forEach(([type, v]) => {
+            Object.entries(q.streams || {}).forEach(([type, v]) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td>${type}</td><td>${v.xlen}</td>`;
                 qBody.appendChild(tr);
@@ -45,17 +132,20 @@
 
             const jBody = document.querySelector('#jobs tbody');
             jBody.innerHTML = '';
-            Object.entries(j).forEach(([k, v]) => {
+            Object.entries(j || {}).forEach(([k, v]) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
                 jBody.appendChild(tr);
             });
         } catch (e) {
             console.error(e);
+            document.getElementById('warn').innerText = '네트워크 오류: 콘솔을 확인하세요.';
         }
     }
-    setInterval(tick, 2000);
+
+    // 최초 로드 + 2초마다 갱신
     tick();
+    setInterval(tick, 2000);
 </script>
 </body>
 </html>
