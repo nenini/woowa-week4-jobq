@@ -1,0 +1,57 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5434/jobq
+    username: jobq
+    password: jobq
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+#      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          lob:
+            non_contextual_creation: true
+      hibernate.format_sql: true
+      hibernate.jdbc.time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: localhost
+      port: 6380
+jobq:
+  stream:
+    prefix: jobq:stream   # 최종 Redis 키: jobq:stream:{type}
+    group: jobq:cg        # 공통 Consumer Group 이름
+    dlqPrefix: jobq:stream:dlq
+  worker:
+    batchSize: 10         # 한 번에 읽을 최대 개수
+    blockMillis: 2000     # XREADGROUP block(ms) - 폴링 대기 시간
+    leaseSeconds: 30
+  retry:
+    maxRetries: 0           # 재시도 최대 횟수(초과 시 DLQ)
+    baseBackoffMillis: 1000 # 1초 * 2^retryCount
+    backoffCapMillis: 60000 # 최대 60초
+    jitterRatio: 0.2        # ±20% 지터
+  handler:
+    emailWelcome:
+      failAlways: false
+  admin:
+    token: "test-admin-token"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: jobq-local
+    distribution:
+      percentiles-histogram:
+        "[jobq.handler.seconds]": true
