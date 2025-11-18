@@ -23,7 +23,7 @@ public class JobEventLog {
     @Column(name="event_type", nullable=false, length=50)
     private String eventType;
 
-    @Lob
+    @Column(columnDefinition = "text")
     private String message;
 
     @Column(name="ts", nullable=false)
