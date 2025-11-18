@@ -23,7 +23,7 @@ public class Job {
     @Column(nullable=false, length=100)
     private String type;
 
-    @Lob @Column(name="payload_json", nullable=false)
+    @Column(name="payload_json", nullable=false,columnDefinition = "text")
     private String payloadJson;
 
     @Enumerated(EnumType.STRING)
