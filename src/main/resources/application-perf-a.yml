@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5434/jobq
+    username: jobq
+    password: jobq
+  data:
+    redis:
+      host: localhost
+      port: 6380
+
+server:
+  tomcat:
+    threads.max: 200
+
+jobq:
+  stream:
+    prefix: jobq:stream
+    group: jobq:cg
+  worker:
+    concurrency: 2
+    batchSize: 16
+    blockMillis: 1000
+    leaseSeconds: 20
+  retry:
+    maxRetries: 0
+    baseBackoffMillis: 500
+    backoffCapMillis: 20000
+    jitterRatio: 0.1
+
+management:
+  endpoints:
+    web.exposure.include: "metrics,prometheus,health,info"
