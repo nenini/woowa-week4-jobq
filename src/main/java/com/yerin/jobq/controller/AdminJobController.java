@@ -2,6 +2,7 @@ package com.yerin.jobq.controller;
 
 import com.yerin.jobq.domain.Job;
 import com.yerin.jobq.dto.JobResponse;
+import com.yerin.jobq.global.dto.DataResponse;
 import com.yerin.jobq.service.AdminJobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,9 +18,9 @@ public class AdminJobController {
     private final AdminJobService adminJobService;
 
     @PostMapping("/{id}/replay")
-    public ResponseEntity<JobResponse> replay(@PathVariable Long id) {
+    public ResponseEntity<DataResponse<JobResponse>> replay(@PathVariable Long id) {
         Job job = adminJobService.replay(id);
-        return ResponseEntity.ok(JobResponse.from(job));
+        return ResponseEntity.ok(DataResponse.from(JobResponse.from(job)));
     }
 }
 
