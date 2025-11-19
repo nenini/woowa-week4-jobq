@@ -4,6 +4,8 @@ package com.yerin.jobq.service;
 import com.yerin.jobq.domain.Job;
 import com.yerin.jobq.domain.JobQueuePort;
 import com.yerin.jobq.domain.JobStatus;
+import com.yerin.jobq.global.exception.AppException;
+import com.yerin.jobq.global.exception.code.JobErrorCode;
 import com.yerin.jobq.repository.JobRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,8 +26,12 @@ public class AdminJobServiceUnitTest {
     @Test
     @DisplayName("DLQ일 때만 재생성 허용")
     void replay_only_when_DLQ() {
-        var job = Job.builder().id(99L).type("email_welcome").status(JobStatus.DLQ)
-                .payloadJson("{\"userId\":777}").build();
+        var job = Job.builder()
+                .id(99L)
+                .type("email_welcome")
+                .status(JobStatus.DLQ)
+                .payloadJson("{\"userId\":777}")
+                .build();
         when(repo.findById(99L)).thenReturn(Optional.of(job));
 
         var res = sut.replay(99L);
@@ -38,10 +44,16 @@ public class AdminJobServiceUnitTest {
     @Test
     @DisplayName("DLQ가 아니면 재생성 거부")
     void replay_non_DLQ_is_error() {
-        var job = Job.builder().id(1L).type("email_welcome").status(JobStatus.QUEUED).build();
+        var job = Job.builder()
+                .id(1L)
+                .type("email_welcome")
+                .status(JobStatus.QUEUED)   // DLQ 아님
+                .build();
         when(repo.findById(1L)).thenReturn(Optional.of(job));
 
         assertThatThrownBy(() -> sut.replay(1L))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(AppException.class)
+                .extracting("errorCode")
+                .isEqualTo(JobErrorCode.JOB_NOT_IN_DLQ);
     }
 }
