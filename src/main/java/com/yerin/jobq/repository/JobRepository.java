@@ -46,4 +46,25 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                       @Param("retry") int retry,
                       @Param("nextAttemptAt") Instant nextAttemptAt);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+   update Job j
+      set j.status = com.yerin.jobq.domain.JobStatus.SUCCEEDED,
+          j.leaseUntil = null
+    where j.id = :id
+      and j.status = com.yerin.jobq.domain.JobStatus.RUNNING
+   """)
+    int succeedIfRunning(@Param("id") Long id);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+   update Job j
+      set j.status = com.yerin.jobq.domain.JobStatus.DLQ,
+          j.leaseUntil = null
+    where j.id = :id
+      and j.status = com.yerin.jobq.domain.JobStatus.RUNNING
+   """)
+    int dlqIfRunning(@Param("id") Long id);
+
+
 }

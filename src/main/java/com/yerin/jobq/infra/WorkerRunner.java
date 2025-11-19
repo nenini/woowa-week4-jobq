@@ -13,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -32,6 +34,14 @@ public class WorkerRunner {
     private final JobHandlerRegistry registry;
     private final JobQueuePort jobQueuePort;
     private final JobqMetrics metrics;
+
+    private final PlatformTransactionManager txManager;
+    private TransactionTemplate tx;
+
+    @PostConstruct
+    void initTx() {
+        this.tx = new TransactionTemplate(txManager);
+    }
 
     @Value("${jobq.stream.prefix:jobq:stream}")
     private String streamPrefix;
@@ -128,85 +138,85 @@ public class WorkerRunner {
 
             try {
                 final Long jobId = Long.valueOf(jobIdStr);
-                Job job = jobRepository.findById(jobId).orElse(null);
-                if (job == null) {
-                    ack(key, rec);
-                    continue;
-                }
 
-                // 아직 시각이 안 되었으면 스킵(ACK)
+                // 최소 조회(타입/재시도/nextAttemptAt 등 확인용)
+                Job job = jobRepository.findById(jobId).orElse(null);
+                if (job == null) { ack(key, rec); continue; }
+
+                // 아직 due가 아니면 ACK
                 if (job.getNextAttemptAt() != null && job.getNextAttemptAt().isAfter(Instant.now())) {
                     ack(key, rec);
                     log.info("[Worker] skip(not-due) key={}, id={}, nextAttemptAt={}", key, rec.getId(), job.getNextAttemptAt());
                     continue;
                 }
 
-                // RUNNING + lease 설정
-                job.setStatus(JobStatus.RUNNING);
-                job.setLeaseUntil(Instant.now().plusSeconds(leaseSeconds));
-                jobRepository.save(job);
+                Integer grabbed = tx.execute(status ->
+                        jobRepository.updateStatusAndLeaseIf(
+                                jobId, JobStatus.QUEUED, JobStatus.RUNNING, Instant.now().plusSeconds(leaseSeconds)
+                        ));
+                if (grabbed == null || grabbed == 0) {
+                    ack(key, rec);
+                    log.debug("[Worker] lost race jobId={}, redisId={}", jobId, rec.getId());
+                    continue;
+                }
+
                 appendLog(jobId, "RUNNING", "lease set");
 
-                // 핸들러 실행(타이머 기록)
+                // 2) 핸들러 실행 + 타이머
                 long start = System.nanoTime();
                 try {
                     JobHandler handler = registry.get(job.getType());
                     if (handler == null) throw new IllegalStateException("No handler for type=" + job.getType());
                     handler.handle(jobIdStr, payload);
                 } finally {
-                    long durNanos = System.nanoTime() - start;
-                    metrics.handlerTimer(job.getType()).record(Duration.ofNanos(durNanos));
+                    metrics.handlerTimer(job.getType()).record(Duration.ofNanos(System.nanoTime() - start));
                 }
 
-                // 성공 → SUCCEEDED
-                job.setStatus(JobStatus.SUCCEEDED);
-                job.setLeaseUntil(null);
-                jobRepository.save(job);
+                // 3) 성공 전이 RUNNING -> SUCCEEDED (원자)
+                tx.execute(status -> jobRepository.succeedIfRunning(jobId));
                 appendLog(jobId, "SUCCEEDED", null);
                 metrics.incSucceeded();
-
                 ack(key, rec);
                 log.info("[Worker] ACK key={}, id={}", key, rec.getId());
 
             } catch (Exception ex) {
-                // 실패 → 재시도 or DLQ
                 metrics.incFailed();
                 try {
                     final Long jobId = Long.valueOf(jobIdStr);
-                    Job job = jobRepository.findById(jobId).orElse(null);
-                    if (job != null) {
-                        int nextRetry = job.getRetryCount() + 1;
 
-                        if (nextRetry > maxRetries) {
-                            job.setStatus(JobStatus.DLQ);
-                            job.setLeaseUntil(null);
-                            jobRepository.save(job);
-                            appendLog(jobId, "DLQ", ex.toString());
-                            metrics.incDlq();
+                    // 재시도 횟수/타입 확인은 한번 더 읽어서 판단(읽기 1회는 괜찮음)
+                    Job cur = jobRepository.findById(jobId).orElse(null);
+                    if (cur == null) { ack(key, rec); continue; }
 
-                            jobQueuePort.enqueueDlq(job.getType(), job.getPayloadJson(), job.getId().toString());
+                    int nextRetry = cur.getRetryCount() + 1;
+                    if (nextRetry > maxRetries) {
+                        // DLQ 전이 RUNNING -> DLQ (원자)
+                        tx.execute(status -> jobRepository.dlqIfRunning(jobId));
+                        appendLog(jobId, "DLQ", ex.toString());
+                        metrics.incDlq();
 
-                            ack(key, rec);
-                            log.warn("[Worker] DLQ jobId={}, redisId={}, err={}", job.getId(), rec.getId(), ex.toString());
+                        jobQueuePort.enqueueDlq(cur.getType(), cur.getPayloadJson(), String.valueOf(jobId));
+
+                        ack(key, rec);
+                        log.warn("[Worker] DLQ jobId={}, redisId={}, err={}", jobId, rec.getId(), ex.toString());
+                    } else {
+                        // 재시도 예약 RUNNING -> QUEUED (원자)
+                        Duration wait = Backoff.expJitter(
+                                cur.getRetryCount(), baseBackoffMillis, backoffCapMillis, jitterRatio
+                        );
+                        Integer updated = tx.execute(status -> jobRepository.updateRetryIf(
+                                jobId, JobStatus.RUNNING, JobStatus.QUEUED, nextRetry, Instant.now().plus(wait)
+                        ));
+
+                        if (updated == null || updated == 0) {
+                            // 레이스로 상태 바뀜 → 로그만 남기고 ACK
+                            log.warn("[Worker] retry update lost race jobId={}", jobId);
                         } else {
-                            Duration wait = Backoff.expJitter(
-                                    job.getRetryCount(),
-                                    baseBackoffMillis,
-                                    backoffCapMillis,
-                                    jitterRatio
-                            );
-                            job.setRetryCount(nextRetry);
-                            job.setStatus(JobStatus.QUEUED);
-                            job.setLeaseUntil(null);
-                            job.setNextAttemptAt(Instant.now().plus(wait));
-                            jobRepository.save(job);
                             appendLog(jobId, "RETRY", ex.toString());
                             metrics.incRetried();
-
-                            ack(key, rec);
-                            log.info("[Worker] reserved retry jobId={} after {} ms", job.getId(), wait.toMillis());
+                            log.info("[Worker] reserved retry jobId={} after {} ms", jobId, wait.toMillis());
                         }
-                    } else {
+
                         ack(key, rec);
                     }
                 } catch (Exception nested) {
@@ -215,6 +225,7 @@ public class WorkerRunner {
                 }
             }
         }
+
     }
 
     private void ack(String key, MapRecord<String, Object, Object> rec) {
