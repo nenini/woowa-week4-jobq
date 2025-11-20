@@ -2,10 +2,12 @@ package com.yerin.jobq.controller;
 
 import com.yerin.jobq.domain.JobStatus;
 import com.yerin.jobq.repository.JobRepository;
+import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,7 +30,9 @@ public class AdminMetricsController {
     private final List<String> types = List.of("email_welcome");
 
     @GetMapping("/queue")
-    public Map<String, Object> queue() {
+    public Map<String, Object> queue(@RequestHeader(value = "X-Admin-Token", required = true)
+                                         @Parameter(description = "관리자 토큰", example = "test-admin-token")
+                                         String adminToken) {
         Map<String, Object> out = new LinkedHashMap<>();
         for (String t : types) {
             String key = streamPrefix + ":" + t;
@@ -42,7 +46,9 @@ public class AdminMetricsController {
     }
 
     @GetMapping("/jobs")
-    public Map<String, Long> jobCounts() {
+    public Map<String, Long> jobCounts(@RequestHeader(value = "X-Admin-Token", required = true)
+                                           @Parameter(description = "관리자 토큰", example = "test-admin-token")
+                                           String adminToken) {
         return Map.of(
                 "QUEUED", jobRepository.countByStatus(JobStatus.QUEUED),
                 "RUNNING", jobRepository.countByStatus(JobStatus.RUNNING),
