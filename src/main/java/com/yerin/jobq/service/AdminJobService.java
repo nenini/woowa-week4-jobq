@@ -3,6 +3,8 @@ package com.yerin.jobq.service;
 import com.yerin.jobq.domain.Job;
 import com.yerin.jobq.domain.JobQueuePort;
 import com.yerin.jobq.domain.JobStatus;
+import com.yerin.jobq.global.exception.AppException;
+import com.yerin.jobq.global.exception.code.JobErrorCode;
 import com.yerin.jobq.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,10 +21,10 @@ public class AdminJobService {
     @Transactional
     public Job replay(Long jobId) {
         Job job = jobRepository.findById(jobId)
-                .orElseThrow(() -> new IllegalArgumentException("job not found"));
+                .orElseThrow(() -> new AppException(JobErrorCode.JOB_NOT_FOUND));
 
         if (job.getStatus() != JobStatus.DLQ) {
-            throw new IllegalStateException("job is not in DLQ");
+            throw new AppException(JobErrorCode.JOB_NOT_IN_DLQ);
         }
 
         // 재시작 : 카운트 초기화 + 즉시 재처리 예약 + 큐 재적재

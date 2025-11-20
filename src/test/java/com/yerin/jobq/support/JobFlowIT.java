@@ -31,16 +31,26 @@ class JobFlowIT extends IntegrationTestBase {
     @DisplayName("성공 플로우: email_welcome 42 → SUCCEEDED")
     void success_flow() {
         var req = Map.of("userId", 42, "idempotencyKey", "it-" + System.currentTimeMillis());
-        var created = rest.postForEntity("/jobs/email_welcome", req, Map.class);
-        var body = created.getBody();
-        assertThat(body).isNotNull();
-        String jobId = String.valueOf(body.get("jobId"));
+        ResponseEntity<Map> created = rest.postForEntity("/jobs/email_welcome", req, Map.class);
 
-        Awaitility.await().atMost(Duration.ofSeconds(8)).pollInterval(Duration.ofMillis(300))
+        Map<?, ?> body = created.getBody();
+        assertThat(body).isNotNull();
+
+        Map<?, ?> data = (Map<?, ?>) body.get("data");
+        String jobId = String.valueOf(data.get("jobId"));
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(8))
+                .pollInterval(Duration.ofMillis(300))
                 .untilAsserted(() -> {
-                    var r = rest.getForEntity("/jobs/{id}", Map.class, jobId);
+                    ResponseEntity<Map> r = rest.getForEntity("/jobs/{id}", Map.class, jobId);
                     assertThat(r.getStatusCode().is2xxSuccessful()).isTrue();
-                    assertThat(r.getBody().get("status")).isEqualTo("SUCCEEDED");
+
+                    Map<?, ?> respBody = r.getBody();
+                    assertThat(respBody).isNotNull();
+                    Map<?, ?> respData = (Map<?, ?>) respBody.get("data");
+
+                    assertThat(respData.get("status")).isEqualTo("SUCCEEDED");
                 });
     }
 }
