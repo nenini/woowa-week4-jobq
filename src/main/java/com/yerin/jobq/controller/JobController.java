@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yerin.jobq.domain.Job;
 import com.yerin.jobq.dto.JobResponse;
+import com.yerin.jobq.dto.request.JobEnqueueRequest;
 import com.yerin.jobq.global.dto.DataResponse;
 import com.yerin.jobq.global.exception.AppException;
 import com.yerin.jobq.global.exception.code.JobErrorCode;
@@ -28,14 +29,12 @@ public class JobController {
     @PostMapping("/{type}")
     public ResponseEntity<DataResponse<Map<String, String>>> enqueue(
             @PathVariable String type,
-            @RequestBody Map<String, Object> body
+            @RequestBody JobEnqueueRequest request
     ) throws JsonProcessingException {
-        String idempotencyKey = (String) body.get("idempotencyKey");
-        String payloadJson = objectMapper.writeValueAsString(body);
+        String payloadJson = objectMapper.writeValueAsString(request);
+        String jobId = enqueueJobService.enqueue(type, payloadJson, request.idempotencyKey());
 
-        String jobId = enqueueJobService.enqueue(type, payloadJson, idempotencyKey);
         Map<String, String> responseMap = Map.of("jobId", jobId);
-
         return ResponseEntity.ok(DataResponse.from(responseMap));
     }
 
