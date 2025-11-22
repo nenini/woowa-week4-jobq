@@ -742,6 +742,8 @@ curl "http://localhost:8080/admin/metrics/queue" \
 
 - http://localhost:8080/dashboard.html
 
+<img src="img.png" width="300" height="250"/>
+
 이 페이지는 내부적으로 `/admin/metrics/jobs`, `/admin/metrics/queue`를 호출해 테이블을 갱신하도록 구성했습니다.
 
 ### 5. DLQ → 재실행 플로우 체험 예시
