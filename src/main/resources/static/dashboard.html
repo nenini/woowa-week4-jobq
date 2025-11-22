@@ -30,10 +30,8 @@
 </table>
 
 <script>
-    // ✅ 대시보드가 관리자 API를 호출할 때 넣을 토큰
     const ADMIN_TOKEN = 'test-admin-token';
 
-    // (원하면 쿼리스트링으로 덮어쓰기 가능: /dashboard.html?token=xxx)
     const urlToken = new URLSearchParams(location.search).get('token');
     const EFFECTIVE_TOKEN = urlToken || ADMIN_TOKEN;
 
@@ -82,7 +80,6 @@
         }
     }
 
-    // 최초 로드 + 2초마다 갱신
     tick();
     setInterval(tick, 2000);
 </script>
