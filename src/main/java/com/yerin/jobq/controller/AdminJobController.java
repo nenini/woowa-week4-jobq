@@ -1,7 +1,7 @@
 package com.yerin.jobq.controller;
 
 import com.yerin.jobq.domain.Job;
-import com.yerin.jobq.dto.JobResponse;
+import com.yerin.jobq.dto.response.JobResponse;
 import com.yerin.jobq.global.dto.DataResponse;
 import com.yerin.jobq.service.AdminJobService;
 import io.swagger.v3.oas.annotations.Parameter;

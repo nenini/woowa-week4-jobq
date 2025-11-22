@@ -3,7 +3,7 @@ package com.yerin.jobq.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yerin.jobq.domain.Job;
-import com.yerin.jobq.dto.JobResponse;
+import com.yerin.jobq.dto.response.JobResponse;
 import com.yerin.jobq.dto.request.JobEnqueueRequest;
 import com.yerin.jobq.global.dto.DataResponse;
 import com.yerin.jobq.global.exception.AppException;
@@ -14,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController

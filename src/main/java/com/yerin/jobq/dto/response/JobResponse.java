@@ -1,4 +1,4 @@
-package com.yerin.jobq.dto;
+package com.yerin.jobq.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yerin.jobq.domain.Job;
