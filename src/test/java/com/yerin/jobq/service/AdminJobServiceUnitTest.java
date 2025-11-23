@@ -47,7 +47,7 @@ public class AdminJobServiceUnitTest {
         var job = Job.builder()
                 .id(1L)
                 .type("email_welcome")
-                .status(JobStatus.QUEUED)   // DLQ 아님
+                .status(JobStatus.QUEUED)
                 .build();
         when(repo.findById(1L)).thenReturn(Optional.of(job));
 

@@ -162,7 +162,7 @@ public class WorkerRunner {
 
                 appendLog(jobId, "RUNNING", "lease set");
 
-                // 2) 핸들러 실행 + 타이머
+                // 핸들러 실행 + 타이머
                 long start = System.nanoTime();
                 try {
                     JobHandler handler = registry.get(job.getType());
@@ -172,7 +172,7 @@ public class WorkerRunner {
                     metrics.handlerTimer(job.getType()).record(Duration.ofNanos(System.nanoTime() - start));
                 }
 
-                // 3) 성공 전이 RUNNING -> SUCCEEDED (원자)
+                // 성공 전이 RUNNING -> SUCCEEDED (원자)
                 tx.execute(status -> jobRepository.succeedIfRunning(jobId));
                 appendLog(jobId, "SUCCEEDED", null);
                 metrics.incSucceeded();
